@@ -1,0 +1,113 @@
+#!/bin/sh
+
+# dbbackup - Create a backup of all your MySQL databases, per database
+#
+# Copyright 2011 René Kreijveld - email@renekreijveld.nl
+#
+# This program is free software; you may redistribute it and/or modify it.
+
+# Version
+version=3.3
+
+# Variables
+myname=$(basename ${0})
+dbuser=root
+dbpass=root
+backupdir=~/Development/backup
+
+# display usage information
+usage() {
+	echo ""
+	echo "${myname} version ${version}, written by Rene Kreijveld."
+	echo ""
+	echo "This script creates a database dump of all your local MySQL databases."
+	echo "Usage: ${myname} [-c] [-f] [-v] [-h]"
+	echo ""
+	echo "-c Compress. Compress the database backup with Gzip"
+	echo "-f Force. Existing backups will be overwritten"
+	echo "-v Verbose. Display extra output information"
+	echo "-h Help. Display this info."
+	echo ""
+	exit 0
+}
+
+# Defaults
+compress="no"
+force="no"
+verbose="no"
+
+# process the arguments
+while getopts cfvh opt; do
+	case "${opt}" in
+		c) compress="yes";;
+		f) force="yes";;
+		v) verbose="yes";;
+		h) usage;;
+		\?) usage;;
+	esac
+done
+
+if [ "${verbose}" == "yes" ]
+then
+	echo ""
+	echo "${myname} version ${version}, written by Rene Kreijveld."
+	if [ "${compress}" == "yes" ]
+	then
+		echo "Database backups will be compressed."
+	fi		
+	echo ""
+fi
+
+# test if backup folder exists
+if [ ! -d ${backupdir} ]
+then
+	echo ""
+	echo "Cannot continue: backup folder ${backupdir} not found."
+	exit 1
+fi
+
+dbs=`mysql -u${dbuser} -p${dbpass} -e"show databases" 2>/dev/null`
+
+for database in ${dbs}
+do
+	case "${database}" in
+	'Database')
+			;;
+	'information_schema')
+			;;
+	'performance_schema')
+			;;
+	'mysql')
+			;;
+	'sys')
+			;;
+	*)
+		filename="${database}.sql"
+		if [ "${verbose}" == "yes" ]
+		then
+			echo Backupping database ${database}
+		fi
+		if [ "${force}" == "yes" ]
+		then
+			mysqldump --skip-opt --add-drop-database --add-drop-table --add-locks --create-options --disable-keys --lock-tables --quick --set-charset --user=${dbuser} --password=${dbpass} -B ${database} >${backupdir}/${filename} 2>/dev/null
+			if [ "${compress}" == "yes" ]
+			then
+				gzip -f ${backupdir}/${filename}
+			fi		
+		else
+			# test if backup file already exists
+			if [ -e ${backupdir}/${filename} ]
+			then
+				echo "Backup file ${backupdir}/${filename} already exists, skipping. Use -f to overwrite."
+			else
+				mysqldump --skip-opt --add-drop-database --add-drop-table --add-locks --create-options --disable-keys --lock-tables --quick --set-charset --user=${dbuser} --password=${dbpass} -B ${database} >${backupdir}/${filename} 2>/dev/null
+				if [ "${compress}" == "yes" ]
+				then
+					gzip ${backupdir}/${filename}
+				fi		
+			fi
+		fi
+		;;
+	esac
+done
+echo All backups are stored in ${backupdir}
